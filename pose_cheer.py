@@ -1,12 +1,20 @@
 import cv2
 import mediapipe as mp
+import socket
 import time
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
 
 MODEL_PATH = "pose_landmarker_lite.task"
+UDP_HOST = "0.0.0.0"
+UDP_RECEIVE_PORT = 5005
+UDP_SEND_PORT = 5006
+UDP_SEND_HOST = "127.0.0.1"
+UDP_BUFFER_SIZE = 1024
+UDP_CONNECTED_TIMEOUT = 5.0
 MAX_PEOPLE = 3
 GREEN = (0, 255, 0)
+RED = (0, 0, 255)
 WHITE = (255, 255, 255)
 DEFAULT_LANDMARK_COLOR = (0, 0, 255)
 DEFAULT_CONNECTION_COLOR = (224, 224, 224)
@@ -209,7 +217,62 @@ def draw_counter(frame, cheer_count):
     )
 
 
+def draw_last_udp_message(frame, message, connected):
+    height = frame.shape[0]
+    cv2.putText(
+        frame,
+        f"UDP: {message}",
+        (20, height - 20),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        GREEN if connected else RED,
+        2,
+        cv2.LINE_AA,
+    )
+
+
+def create_udp_sockets():
+    receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    receive_socket.bind((UDP_HOST, UDP_RECEIVE_PORT))
+    receive_socket.setblocking(False)
+
+    send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    print(f"UDP recebendo em {UDP_HOST}:{UDP_RECEIVE_PORT}")
+    print(f"UDP enviando para {UDP_SEND_HOST}:{UDP_SEND_PORT}")
+    return receive_socket, send_socket
+
+
+def reset_values(state):
+    state["tracked_people"] = []
+    state["next_person_id"] = 1
+    state["cheer_count"] = 0
+
+
+def handle_udp_messages(receive_socket, send_socket, callbacks, state):
+    while True:
+        try:
+            data, address = receive_socket.recvfrom(UDP_BUFFER_SIZE)
+        except BlockingIOError:
+            break
+
+        message = data.decode("utf-8", errors="ignore").strip().lower()
+        state["last_udp_message"] = message
+        state["last_udp_time"] = time.monotonic()
+        print(f"UDP recebido de {address[0]}:{address[1]} -> {message}")
+        callback = callbacks.get(message)
+        if callback is None:
+            continue
+
+        response = callback()
+        if response is not None:
+            target_address = (UDP_SEND_HOST, UDP_SEND_PORT)
+            send_socket.sendto(response.encode("utf-8"), target_address)
+            print(f"UDP enviado para {target_address[0]}:{target_address[1]} -> {response}")
+
+
 cap = cv2.VideoCapture(0)
+udp_receive_socket, udp_send_socket = create_udp_sockets()
 
 options = vision.PoseLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=MODEL_PATH),
@@ -222,12 +285,27 @@ options = vision.PoseLandmarkerOptions(
 
 with vision.PoseLandmarker.create_from_options(options) as pose:
     start_time = time.monotonic()
-    tracked_people = []
-    next_person_id = 1
-    cheer_count = 0
+    state = {
+        "tracked_people": [],
+        "next_person_id": 1,
+        "cheer_count": 0,
+        "last_udp_message": "sem mensagem",
+        "last_udp_time": None,
+    }
+    udp_callbacks = {
+        "reset": lambda: reset_values(state),
+        "values": lambda: f"cheer,{state['cheer_count']}",
+    }
     debug_labels = False
 
     while cap.isOpened():
+        handle_udp_messages(
+            udp_receive_socket,
+            udp_send_socket,
+            udp_callbacks,
+            state,
+        )
+
         ret, frame = cap.read()
         if not ret:
             break
@@ -238,10 +316,10 @@ with vision.PoseLandmarker.create_from_options(options) as pose:
         results = pose.detect_for_video(mp_image, timestamp_ms)
         now = time.monotonic()
 
-        current_people, next_person_id = track_people(
+        current_people, state["next_person_id"] = track_people(
             results.pose_landmarks,
-            tracked_people,
-            next_person_id,
+            state["tracked_people"],
+            state["next_person_id"],
             now,
         )
 
@@ -249,12 +327,21 @@ with vision.PoseLandmarker.create_from_options(options) as pose:
             is_cheering = is_cheering_pose(landmarks)
             if is_cheering and not person["counted"]:
                 person["counted"] = True
-                cheer_count += 1
+                state["cheer_count"] += 1
 
             draw_pose(frame, landmarks, person, is_cheering, debug_labels)
 
         if debug_labels:
-            draw_counter(frame, cheer_count)
+            udp_connected = (
+                state["last_udp_time"] is not None
+                and time.monotonic() - state["last_udp_time"] <= UDP_CONNECTED_TIMEOUT
+            )
+            draw_counter(frame, state["cheer_count"])
+            draw_last_udp_message(
+                frame,
+                state["last_udp_message"],
+                udp_connected,
+            )
 
         cv2.imshow("MediaPipe Pose", frame)
         key = cv2.waitKey(5) & 0xFF
@@ -263,9 +350,9 @@ with vision.PoseLandmarker.create_from_options(options) as pose:
         if key in (ord("d"), ord("D")):
             debug_labels = not debug_labels
         if key in (ord("r"), ord("R")):
-            tracked_people = []
-            next_person_id = 1
-            cheer_count = 0
+            reset_values(state)
 
+udp_receive_socket.close()
+udp_send_socket.close()
 cap.release()
 cv2.destroyAllWindows()

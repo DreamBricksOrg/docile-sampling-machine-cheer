@@ -271,7 +271,10 @@ def handle_udp_messages(receive_socket, send_socket, callbacks, state):
             print(f"UDP enviado para {target_address[0]}:{target_address[1]} -> {response}")
 
 
+
 cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 udp_receive_socket, udp_send_socket = create_udp_sockets()
 
 options = vision.PoseLandmarkerOptions(
@@ -294,7 +297,7 @@ with vision.PoseLandmarker.create_from_options(options) as pose:
     }
     udp_callbacks = {
         "reset": lambda: reset_values(state),
-        "values": lambda: f"cheer,{state['cheer_count']}",
+        "values": lambda: f"cheer,{min(state['cheer_count'], 3)}",
     }
     debug_labels = False
 

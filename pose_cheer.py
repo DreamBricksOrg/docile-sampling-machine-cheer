@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import socket
 import time
+from pathlib import Path
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
 
@@ -24,6 +25,7 @@ ACTIVE_TRACKING_DISTANCE = 0.25
 LOST_TRACKING_DISTANCE = 0.45
 MAX_MISSING_SECONDS = 8.0
 MAX_MISSING_SECONDS_AFTER_COUNT = 20.0
+DRAW_SKELETON = False
 
 
 def is_visible(landmark):
@@ -168,24 +170,28 @@ def track_people(detected_landmarks, tracked_people, next_person_id, now):
 
 
 def draw_pose(frame, landmarks, person, is_cheering, debug_labels):
+    if not DRAW_SKELETON and not debug_labels:
+        return
+
     landmark_color = GREEN if is_cheering else DEFAULT_LANDMARK_COLOR
     connection_color = GREEN if is_cheering else DEFAULT_CONNECTION_COLOR
 
-    vision.drawing_utils.draw_landmarks(
-        frame,
-        landmarks,
-        vision.PoseLandmarksConnections.POSE_LANDMARKS,
-        landmark_drawing_spec=vision.drawing_utils.DrawingSpec(
-            color=landmark_color,
-            thickness=2,
-            circle_radius=2,
-        ),
-        connection_drawing_spec=vision.drawing_utils.DrawingSpec(
-            color=connection_color,
-            thickness=2,
-            circle_radius=2,
-        ),
-    )
+    if DRAW_SKELETON:
+        vision.drawing_utils.draw_landmarks(
+            frame,
+            landmarks,
+            vision.PoseLandmarksConnections.POSE_LANDMARKS,
+            landmark_drawing_spec=vision.drawing_utils.DrawingSpec(
+                color=landmark_color,
+                thickness=2,
+                circle_radius=2,
+            ),
+            connection_drawing_spec=vision.drawing_utils.DrawingSpec(
+                color=connection_color,
+                thickness=2,
+                circle_radius=2,
+            ),
+        )
 
     if debug_labels:
         height, width = frame.shape[:2]
@@ -273,6 +279,8 @@ def handle_udp_messages(receive_socket, send_socket, callbacks, state):
 
 
 cap = cv2.VideoCapture(0)
+print(f"Arquivo em execucao: {Path(__file__).resolve()}")
+print(f"DRAW_SKELETON = {DRAW_SKELETON}")
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 udp_receive_socket, udp_send_socket = create_udp_sockets()

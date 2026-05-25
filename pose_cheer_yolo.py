@@ -24,6 +24,7 @@ LOST_TRACKING_DISTANCE = 0.7
 MAX_MISSING_SECONDS = 8.0
 MAX_MISSING_SECONDS_AFTER_COUNT = 20.0
 ACTIVE_TRACKING_TIME_THRESHOLD = 0.5
+DRAW_SKELETON = True
 
 # YOLO keypoint indices
 NOSE = 0
@@ -239,19 +240,23 @@ def track_people(detected_keypoints, tracked_people, next_person_id, now):
 
 def draw_pose(frame, keypoints, person, is_cheering, debug_labels):
     """Desenha a pose no frame"""
+    if not DRAW_SKELETON and not debug_labels:
+        return
+
     # Cores baseadas no estado de torcida
     landmark_color = GREEN if is_cheering else DEFAULT_LANDMARK_COLOR
     connection_color = GREEN if is_cheering else DEFAULT_CONNECTION_COLOR
 
     h, w = frame.shape[:2]
 
-    # Desenhar keypoints
-    for i, (x, y, conf) in enumerate(keypoints):
-        if conf >= MIN_CONFIDENCE:
-            x_px = int(x * w)
-            y_px = int(y * h)
-            cv2.circle(frame, (x_px, y_px), 5, landmark_color, -1)
-            cv2.circle(frame, (x_px, y_px), 5, (255, 255, 255), 1)
+    if DRAW_SKELETON:
+        # Desenhar keypoints
+        for i, (x, y, conf) in enumerate(keypoints):
+            if conf >= MIN_CONFIDENCE:
+                x_px = int(x * w)
+                y_px = int(y * h)
+                cv2.circle(frame, (x_px, y_px), 5, landmark_color, -1)
+                cv2.circle(frame, (x_px, y_px), 5, (255, 255, 255), 1)
 
     # Conexões principais do corpo (COCO format)
     connections = [
@@ -262,7 +267,8 @@ def draw_pose(frame, keypoints, person, is_cheering, debug_labels):
     ]
 
     for start_idx, end_idx in connections:
-        if (keypoints[start_idx, 2] >= MIN_CONFIDENCE and
+        if (DRAW_SKELETON and
+                keypoints[start_idx, 2] >= MIN_CONFIDENCE and
                 keypoints[end_idx, 2] >= MIN_CONFIDENCE):
             start_pos = (int(keypoints[start_idx, 0] * w), int(keypoints[start_idx, 1] * h))
             end_pos = (int(keypoints[end_idx, 0] * w), int(keypoints[end_idx, 1] * h))

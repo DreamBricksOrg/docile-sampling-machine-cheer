@@ -59,20 +59,14 @@ def is_cheering_pose(keypoints):
     if len(keypoints) < 17:
         return False
 
-    nose_conf = keypoints[NOSE, 2]
     left_wrist_conf = keypoints[LEFT_WRIST, 2]
     right_wrist_conf = keypoints[RIGHT_WRIST, 2]
-    left_elbow_conf = keypoints[LEFT_ELBOW, 2]
-    right_elbow_conf = keypoints[RIGHT_ELBOW, 2]
     left_shoulder_conf = keypoints[LEFT_SHOULDER, 2]
     right_shoulder_conf = keypoints[RIGHT_SHOULDER, 2]
 
     important_conf = (
-        nose_conf,
         left_wrist_conf,
         right_wrist_conf,
-        left_elbow_conf,
-        right_elbow_conf,
         left_shoulder_conf,
         right_shoulder_conf,
     )
@@ -80,24 +74,13 @@ def is_cheering_pose(keypoints):
     if not all(is_visible(conf) for conf in important_conf):
         return False
 
-    nose_y = keypoints[NOSE, 1]
     left_wrist_y = keypoints[LEFT_WRIST, 1]
     right_wrist_y = keypoints[RIGHT_WRIST, 1]
-    left_elbow_y = keypoints[LEFT_ELBOW, 1]
-    right_elbow_y = keypoints[RIGHT_ELBOW, 1]
     left_shoulder_y = keypoints[LEFT_SHOULDER, 1]
     right_shoulder_y = keypoints[RIGHT_SHOULDER, 1]
+    shoulder_line_y = (left_shoulder_y + right_shoulder_y) / 2
 
-    wrists_above_head = (
-        left_wrist_y < nose_y - ABOVE_HEAD_MARGIN
-        and right_wrist_y < nose_y - ABOVE_HEAD_MARGIN
-    )
-    elbows_lifted = (
-        left_elbow_y < left_shoulder_y
-        and right_elbow_y < right_shoulder_y
-    )
-
-    return wrists_above_head and elbows_lifted
+    return left_wrist_y <= shoulder_line_y and right_wrist_y <= shoulder_line_y
 
 
 def pose_center(keypoints):

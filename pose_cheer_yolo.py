@@ -13,6 +13,7 @@ UDP_BUFFER_SIZE = 1024
 UDP_CONNECTED_TIMEOUT = 5.0
 MAX_PEOPLE = 3
 GREEN = (0, 255, 0)
+YELLOW = (0, 192, 255)
 RED = (0, 0, 255)
 WHITE = (255, 255, 255)
 DEFAULT_LANDMARK_COLOR = (0, 0, 255)
@@ -45,6 +46,8 @@ RIGHT_KNEE = 14
 LEFT_ANKLE = 15
 RIGHT_ANKLE = 16
 
+is_Cta = False
+hand_is_up = False
 
 def is_visible(keypoint_conf):
     return keypoint_conf >= MIN_CONFIDENCE
@@ -81,6 +84,38 @@ def is_cheering_pose(keypoints):
     shoulder_line_y = (left_shoulder_y + right_shoulder_y) / 2
 
     return left_wrist_y <= shoulder_line_y and right_wrist_y <= shoulder_line_y
+
+def is_one_hand_above(keypoints):
+    """
+    Detecta se a pose tem um braço levantado:
+    - Punhos acima da cabeça
+    - Cotovelos levantados acima dos ombros
+    """
+    if len(keypoints) < 17:
+        return False
+
+    left_wrist_conf = keypoints[LEFT_WRIST, 2]
+    right_wrist_conf = keypoints[RIGHT_WRIST, 2]
+    left_shoulder_conf = keypoints[LEFT_SHOULDER, 2]
+    right_shoulder_conf = keypoints[RIGHT_SHOULDER, 2]
+
+    important_conf = (
+        left_wrist_conf,
+        right_wrist_conf,
+        left_shoulder_conf,
+        right_shoulder_conf,
+    )
+
+    if not all(is_visible(conf) for conf in important_conf):
+        return False
+
+    left_wrist_y = keypoints[LEFT_WRIST, 1]
+    right_wrist_y = keypoints[RIGHT_WRIST, 1]
+    left_shoulder_y = keypoints[LEFT_SHOULDER, 1]
+    right_shoulder_y = keypoints[RIGHT_SHOULDER, 1]
+    shoulder_line_y = (left_shoulder_y + right_shoulder_y) / 2
+
+    return left_wrist_y <= shoulder_line_y or right_wrist_y <= shoulder_line_y
 
 
 def pose_center(keypoints):
@@ -221,14 +256,17 @@ def track_people(detected_keypoints, tracked_people, next_person_id, now):
     return current_people, next_person_id
 
 
-def draw_pose(frame, keypoints, person, is_cheering, debug_labels):
+def draw_pose(frame, keypoints, person, is_cheering, has_one_hand_above, debug_labels):
     """Desenha a pose no frame"""
     if not DRAW_SKELETON and not debug_labels:
         return
 
     # Cores baseadas no estado de torcida
-    landmark_color = GREEN if is_cheering else DEFAULT_LANDMARK_COLOR
-    connection_color = GREEN if is_cheering else DEFAULT_CONNECTION_COLOR
+    
+    landmark_color = GREEN if is_cheering else YELLOW if has_one_hand_above else DEFAULT_LANDMARK_COLOR
+    connection_color = GREEN if is_cheering else YELLOW if has_one_hand_above else DEFAULT_CONNECTION_COLOR
+
+
 
     h, w = frame.shape[:2]
 
@@ -317,7 +355,11 @@ def reset_values(state):
     state["tracked_people"] = []
     state["next_person_id"] = 1
     state["cheer_count"] = 0
+    state["is_Cta"] = False
+    state["hand_is_up"] = False
 
+def set_Cta(state):
+    state["is_Cta"] = True
 
 def handle_udp_messages(receive_socket, send_socket, callbacks, state):
     while True:
@@ -356,10 +398,13 @@ state = {
     "cheer_count": 0,
     "last_udp_message": "sem mensagem",
     "last_udp_time": None,
+    "is_Cta": False,
+    "hand_is_up": False
 }
 udp_callbacks = {
     "reset": lambda: reset_values(state),
     "values": lambda: f"cheer,{min(state['cheer_count'], 3)}",
+    "cta": lambda: set_Cta(state),
 }
 debug_labels = False
 
@@ -399,11 +444,20 @@ while cap.isOpened():
 
     for keypoints, person in current_people:
         is_cheering = is_cheering_pose(keypoints)
+        has_one_hand_above = is_one_hand_above(keypoints)
         if is_cheering and not person["counted"]:
             person["counted"] = True
             state["cheer_count"] += 1
-
-        draw_pose(frame, keypoints, person, is_cheering, debug_labels)
+        target_address = (UDP_SEND_HOST, UDP_SEND_PORT)
+        if state["is_Cta"]:
+            if has_one_hand_above and state["hand_is_up"] == False:   
+                state["hand_is_up"] = True         
+                udp_send_socket.sendto("hand_up".encode("utf-8"), target_address)
+            elif has_one_hand_above == False and state["hand_is_up"] == True:
+                state["hand_is_up"] = False
+                udp_send_socket.sendto("hand_down".encode("utf-8"), target_address)
+                
+        draw_pose(frame, keypoints, person, is_cheering, has_one_hand_above, debug_labels)
 
     if debug_labels:
         udp_connected = (

@@ -228,6 +228,7 @@ def track_people(detected_keypoints, tracked_people, next_person_id, now):
                 "counted": False,
                 "last_seen": now,
                 "visible": True,
+                "has_one_hand_up": False
             }
             tracked_people.append(person)
             next_person_id += 1
@@ -396,6 +397,7 @@ state = {
     "tracked_people": [],
     "next_person_id": 1,
     "cheer_count": 0,
+    "hand_up_count": 0,
     "last_udp_message": "sem mensagem",
     "last_udp_time": None,
     "is_Cta": False,
@@ -450,12 +452,23 @@ while cap.isOpened():
             state["cheer_count"] += 1
         target_address = (UDP_SEND_HOST, UDP_SEND_PORT)
         if state["is_Cta"]:
-            if has_one_hand_above and state["hand_is_up"] == False:   
-                state["hand_is_up"] = True         
-                udp_send_socket.sendto("hand_up".encode("utf-8"), target_address)
-            elif has_one_hand_above == False and state["hand_is_up"] == True:
-                state["hand_is_up"] = False
-                udp_send_socket.sendto("hand_down".encode("utf-8"), target_address)
+            
+            if has_one_hand_above and person["has_one_hand_up"] == False:                
+                print(f"Hand up Count {state["hand_up_count"]}")
+                print(f"Hand person {person["has_one_hand_up"]}")
+                state["hand_up_count"] += 1
+                person["has_one_hand_up"] = True
+                if state["hand_is_up"] == False: 
+                    state["hand_is_up"] = True
+                    udp_send_socket.sendto("hand_up".encode("utf-8"), target_address)
+            elif has_one_hand_above == False and person["has_one_hand_up"] == True: 
+                person["has_one_hand_up"] = False
+                if state["hand_up_count"] > 0:
+                    state["hand_up_count"] -= 1
+                print(f"Hand up Count {state["hand_up_count"]}")
+                if state["hand_is_up"] == True and state["hand_up_count"] == 0:
+                    state["hand_is_up"] = False
+                    udp_send_socket.sendto("hand_down".encode("utf-8"), target_address)
                 
         draw_pose(frame, keypoints, person, is_cheering, has_one_hand_above, debug_labels)
 

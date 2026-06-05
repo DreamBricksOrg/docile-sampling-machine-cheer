@@ -356,6 +356,7 @@ def reset_values(state):
     state["tracked_people"] = []
     state["next_person_id"] = 1
     state["cheer_count"] = 0
+    state["hand_up_count"] = 0
     state["is_Cta"] = False
     state["hand_is_up"] = False
 

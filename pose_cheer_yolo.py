@@ -453,9 +453,7 @@ while cap.isOpened():
         target_address = (UDP_SEND_HOST, UDP_SEND_PORT)
         if state["is_Cta"]:
             
-            if has_one_hand_above and person["has_one_hand_up"] == False:                
-                print(f"Hand up Count {state["hand_up_count"]}")
-                print(f"Hand person {person["has_one_hand_up"]}")
+            if has_one_hand_above and person["has_one_hand_up"] == False:
                 state["hand_up_count"] += 1
                 person["has_one_hand_up"] = True
                 if state["hand_is_up"] == False: 
@@ -465,7 +463,6 @@ while cap.isOpened():
                 person["has_one_hand_up"] = False
                 if state["hand_up_count"] > 0:
                     state["hand_up_count"] -= 1
-                print(f"Hand up Count {state["hand_up_count"]}")
                 if state["hand_is_up"] == True and state["hand_up_count"] == 0:
                     state["hand_is_up"] = False
                     udp_send_socket.sendto("hand_down".encode("utf-8"), target_address)

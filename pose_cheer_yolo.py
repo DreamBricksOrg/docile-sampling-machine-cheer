@@ -257,15 +257,15 @@ def track_people(detected_keypoints, tracked_people, next_person_id, now):
     return current_people, next_person_id
 
 
-def draw_pose(frame, keypoints, person, is_cheering, has_one_hand_above, debug_labels):
+def draw_pose(frame, keypoints, person, is_cheering, debug_labels):
     """Desenha a pose no frame"""
     if not DRAW_SKELETON and not debug_labels:
         return
 
     # Cores baseadas no estado de torcida
     
-    landmark_color = GREEN if is_cheering else YELLOW if has_one_hand_above else DEFAULT_LANDMARK_COLOR
-    connection_color = GREEN if is_cheering else YELLOW if has_one_hand_above else DEFAULT_CONNECTION_COLOR
+    landmark_color = GREEN if is_cheering else  DEFAULT_LANDMARK_COLOR
+    connection_color = GREEN if is_cheering else DEFAULT_CONNECTION_COLOR
 
 
 
@@ -295,7 +295,7 @@ def draw_pose(frame, keypoints, person, is_cheering, has_one_hand_above, debug_l
             start_pos = (int(keypoints[start_idx, 0] * w), int(keypoints[start_idx, 1] * h))
             end_pos = (int(keypoints[end_idx, 0] * w), int(keypoints[end_idx, 1] * h))
             cv2.line(frame, start_pos, end_pos, connection_color, 2)
-
+    
     # Label de debug
     if debug_labels:
         label_x = int(person["center"][0] * w)
@@ -311,6 +311,19 @@ def draw_pose(frame, keypoints, person, is_cheering, has_one_hand_above, debug_l
             2,
             cv2.LINE_AA,
         )
+        h, w = frame.shape[:2]
+
+        ROI_MIN_X = 0.35
+        ROI_MAX_X = 0.65
+        ROI_MIN_Y = 0.20
+        ROI_MAX_Y = 0.80
+
+        x1 = int(ROI_MIN_X * w)
+        y1 = int(ROI_MIN_Y * h)
+        x2 = int(ROI_MAX_X * w)
+        y2 = int(ROI_MAX_Y * h)
+
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
 
 def draw_counter(frame, cheer_count):
@@ -359,6 +372,14 @@ def reset_values(state):
     state["hand_up_count"] = 0
     state["is_Cta"] = False
     state["hand_is_up"] = False
+
+def is_in_roi(center):
+    x, y = center
+
+    return (
+        0.35 <= x <= 0.65 and
+        0.20 <= y <= 0.80
+    )
 
 def set_Cta(state):
     state["is_Cta"] = True
@@ -447,28 +468,46 @@ while cap.isOpened():
 
     for keypoints, person in current_people:
         is_cheering = is_cheering_pose(keypoints)
-        has_one_hand_above = is_one_hand_above(keypoints)
+        # has_one_hand_above = is_one_hand_above(keypoints)
         if is_cheering and not person["counted"]:
             person["counted"] = True
             state["cheer_count"] += 1
         target_address = (UDP_SEND_HOST, UDP_SEND_PORT)
-        if state["is_Cta"]:
-            
-            if has_one_hand_above and person["has_one_hand_up"] == False:
-                state["hand_up_count"] += 1
-                person["has_one_hand_up"] = True
-                if state["hand_is_up"] == False: 
-                    state["hand_is_up"] = True
-                    udp_send_socket.sendto("hand_up".encode("utf-8"), target_address)
-            elif has_one_hand_above == False and person["has_one_hand_up"] == True: 
-                person["has_one_hand_up"] = False
-                if state["hand_up_count"] > 0:
-                    state["hand_up_count"] -= 1
-                if state["hand_is_up"] == True and state["hand_up_count"] == 0:
-                    state["hand_is_up"] = False
-                    udp_send_socket.sendto("hand_down".encode("utf-8"), target_address)
+        # if state["is_Cta"]:
+        # if :
+        #     print("HandsUp")
+                # udp_send_socket.sendto("hand_up".encode("utf-8"), target_address)
+        # else:
+        #     print("HandsDown")                
+                # udp_send_socket.sendto("hand_down".encode("utf-8"), target_address)
+            # if has_one_hand_above and person["has_one_hand_up"] == False:
+            #     state["hand_up_count"] += 1
+            #     person["has_one_hand_up"] = True
+            #     if state["hand_is_up"] == False: 
+            #         state["hand_is_up"] = True
+            #         udp_send_socket.sendto("hand_up".encode("utf-8"), target_address)
+            # elif has_one_hand_above == False and person["has_one_hand_up"] == True: 
+            #     person["has_one_hand_up"] = False
+            #     if state["hand_up_count"] > 0:
+            #         state["hand_up_count"] -= 1
+            #     if state["hand_is_up"] == True and state["hand_up_count"] == 0:
+            #         state["hand_is_up"] = False
+            #         udp_send_socket.sendto("hand_down".encode("utf-8"), target_address)
                 
-        draw_pose(frame, keypoints, person, is_cheering, has_one_hand_above, debug_labels)
+        draw_pose(frame, keypoints, person, is_cheering, debug_labels)
+    
+    has_person_in_roi = any(
+        person.get("visible", False) and
+        is_in_roi(person["center"])
+        for person in state["tracked_people"]
+    )
+    if state["is_Cta"]:
+        if has_person_in_roi and state["hand_up_count"] == 0:
+            state["hand_up_count"] = 1
+            udp_send_socket.sendto("hand_up".encode("utf-8"), target_address)
+        elif not has_person_in_roi and state["hand_up_count"] == 1:
+            state["hand_up_count"] = 0
+            udp_send_socket.sendto("hand_down".encode("utf-8"), target_address)
 
     if debug_labels:
         udp_connected = (

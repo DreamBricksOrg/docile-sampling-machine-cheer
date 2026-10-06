@@ -46,6 +46,11 @@ RIGHT_KNEE = 14
 LEFT_ANKLE = 15
 RIGHT_ANKLE = 16
 
+ROI_MIN_X = 0.35
+ROI_MAX_X = 0.65
+ROI_MIN_Y = 0.20
+ROI_MAX_Y = 0.80
+
 is_Cta = False
 hand_is_up = False
 
@@ -313,11 +318,6 @@ def draw_pose(frame, keypoints, person, is_cheering, debug_labels):
         )
         h, w = frame.shape[:2]
 
-        ROI_MIN_X = 0.35
-        ROI_MAX_X = 0.65
-        ROI_MIN_Y = 0.20
-        ROI_MAX_Y = 0.80
-
         x1 = int(ROI_MIN_X * w)
         y1 = int(ROI_MIN_Y * h)
         x2 = int(ROI_MAX_X * w)
@@ -377,8 +377,8 @@ def is_in_roi(center):
     x, y = center
 
     return (
-        0.35 <= x <= 0.65 and
-        0.20 <= y <= 0.80
+        ROI_MIN_X <= x <= ROI_MAX_X and
+        ROI_MIN_Y <= y <= ROI_MAX_Y
     )
 
 def set_Cta(state):
@@ -408,8 +408,8 @@ def handle_udp_messages(receive_socket, send_socket, callbacks, state):
 
 # Inicialização
 cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 854)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 udp_receive_socket, udp_send_socket = create_udp_sockets()
 
 # Carregar modelo YOLO
@@ -422,7 +422,7 @@ state = {
     "hand_up_count": 0,
     "last_udp_message": "sem mensagem",
     "last_udp_time": None,
-    "is_Cta": False,
+    "is_Cta": True,
     "hand_is_up": False
 }
 udp_callbacks = {
